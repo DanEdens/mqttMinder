@@ -1,0 +1,19 @@
+[package]
+name = "mqtt_mind_map"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# MQTT client for Rust
+rumqttc = "0.18.0"
+
+# Graph manipulation and visualization
+petgraph = "0.6.3"
+
+# Logging
+log = "0.4.20"
+env_logger = "0.10.0"
+
+# File system utilities
+dirs = "5.0.0"
+
