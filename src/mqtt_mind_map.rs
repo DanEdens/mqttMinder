@@ -10,10 +10,10 @@ use std::process::Command;
 
 #[derive(Clone)]
 pub struct NodeData {
-    label: String,
-    level: usize,
-    last_update: Instant,
-    value: String,
+    pub label: String,
+    pub level: usize,
+    pub last_update: Instant,
+    pub value: String,
 }
 
 pub struct MQTTMindMap {
@@ -215,14 +215,4 @@ impl MQTTMindMap {
             Err(err) => error!("Failed to connect to MQTT broker: {:?}", err),
         }
     }
-}
-
-fn main() {
-    env_logger::init();
-
-    let host = env::var("AWSIP2").unwrap_or_else(|_| "localhost".to_string());
-    let port = env::var("AWSPORT").unwrap_or_else(|_| "3003".to_string()).parse().unwrap_or(3003);
-
-    let mind_map = MQTTMindMap::new(host, port, 1.0, "output".to_string());
-    mind_map.start();
 }
