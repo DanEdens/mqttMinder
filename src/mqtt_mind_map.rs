@@ -1,22 +1,22 @@
-use rumqttc::{MqttOptions, Client, Event, EventLoop, Incoming};
+use rumqttc::{MqttOptions, Client, Event, Incoming};
 use std::{collections::HashMap, fs, sync::Arc, sync::Mutex, thread, time::{Duration, Instant}};
 use petgraph::graph::{Graph, NodeIndex};
-use petgraph::dot::{Dot, Config};
+use petgraph::visit::EdgeRef;
 use std::env;
-use log::{info, warn, error};
+use log::{info, error};
 use chrono::Local;
-use palette::{Srgb, Gradient};
+use palette::LinSrgb;
 use std::process::Command;
 
 #[derive(Clone)]
-struct NodeData {
+pub struct NodeData {
     label: String,
     level: usize,
     last_update: Instant,
     value: String,
 }
 
-struct MQTTMindMap {
+pub struct MQTTMindMap {
     host: String,
     port: u16,
     update_interval: Duration,
@@ -26,7 +26,7 @@ struct MQTTMindMap {
 }
 
 impl MQTTMindMap {
-    fn new(host: String, port: u16, update_interval: f64, output_dir: String) -> Self {
+    pub fn new(host: String, port: u16, update_interval: f64, output_dir: String) -> Self {
         let update_interval = Duration::from_secs_f64(update_interval);
         fs::create_dir_all(&output_dir).unwrap();
 
@@ -42,38 +42,37 @@ impl MQTTMindMap {
 
     fn connect(&self) -> Result<Client, rumqttc::ClientError> {
         let mut mqtt_options = MqttOptions::new("mind_map_client", &self.host, self.port);
-        mqtt_options.set_keep_alive(5);
+        mqtt_options.set_keep_alive(Duration::from_secs(5));
 
-        let (client, event_loop) = Client::new(mqtt_options, 10);
+        let (client, mut event_loop) = Client::new(mqtt_options, 10);
         let topic_values = Arc::clone(&self.topic_values);
         let last_update = Arc::clone(&self.last_update);
         let update_interval = self.update_interval;
         let output_dir = self.output_dir.clone();
 
         thread::spawn(move || {
-            let mut event_loop = event_loop;
-
             loop {
-                match event_loop.poll() {
-                    Ok(Event::Incoming(Incoming::Publish(p))) => {
-                        let topic = p.topic.clone();
-                        let value = String::from_utf8_lossy(&p.payload).to_string();
+                match event_loop.recv() {
+                    Ok(notification) => {
+                        if let Ok(Event::Incoming(Incoming::Publish(p))) = notification {
+                            let topic = p.topic.clone();
+                            let value = String::from_utf8_lossy(&p.payload).to_string();
 
-                        let mut values = topic_values.lock().unwrap();
-                        values.insert(topic, value);
+                            let mut values = topic_values.lock().unwrap();
+                            values.insert(topic, value);
 
-                        let now = Instant::now();
-                        let mut last = last_update.lock().unwrap();
-                        if now.duration_since(*last) >= update_interval {
-                            *last = now;
-                            if let Err(err) = Self::update_mind_map(&output_dir, &values) {
-                                error!("Failed to update mind map: {:?}", err);
+                            let now = Instant::now();
+                            let mut last = last_update.lock().unwrap();
+                            if now.duration_since(*last) >= update_interval {
+                                *last = now;
+                                if let Err(err) = Self::update_mind_map(&output_dir, &values) {
+                                    error!("Failed to update mind map: {:?}", err);
+                                }
                             }
                         }
                     }
-                    Ok(_) => {}
-                    Err(err) => {
-                        error!("Error in MQTT loop: {:?}", err);
+                    Err(e) => {
+                        error!("Error in MQTT loop: {:?}", e);
                         break;
                     }
                 }
@@ -89,11 +88,11 @@ impl MQTTMindMap {
         let now = Instant::now();
 
         // Create a color gradient for different levels
-        let gradient = Gradient::new(vec![
-            Srgb::new(0.2, 0.7, 1.0),  // Light blue
-            Srgb::new(0.1, 0.5, 0.9),  // Medium blue
-            Srgb::new(0.0, 0.3, 0.8),  // Dark blue
-        ]);
+        let colors = vec![
+            LinSrgb::new(0.2, 0.7, 1.0),  // Light blue
+            LinSrgb::new(0.1, 0.5, 0.9),  // Medium blue
+            LinSrgb::new(0.0, 0.3, 0.8),  // Dark blue
+        ];
 
         for (topic, value) in topic_values.iter() {
             let parts: Vec<&str> = topic.split('/').collect();
@@ -136,7 +135,10 @@ impl MQTTMindMap {
         // Add nodes with styling
         for node_idx in graph.node_indices() {
             let node = &graph[node_idx];
-            let color = gradient.get(node.level as f32 / 5.0); // Normalize level to 0-1 range
+            let color_idx = (node.level as f32 / colors.len() as f32).min(1.0);
+            let color_idx = (color_idx * (colors.len() - 1) as f32) as usize;
+            let color = colors[color_idx];
+
             let color_str = format!("#{:02x}{:02x}{:02x}",
                 (color.red * 255.0) as u8,
                 (color.green * 255.0) as u8,
@@ -202,9 +204,9 @@ impl MQTTMindMap {
         Ok(())
     }
 
-    fn start(&self) {
+    pub fn start(&self) {
         match self.connect() {
-            Ok(client) => {
+            Ok(mut client) => {
                 client.subscribe("#", rumqttc::QoS::AtLeastOnce).unwrap();
                 loop {
                     thread::sleep(Duration::from_millis(100));
