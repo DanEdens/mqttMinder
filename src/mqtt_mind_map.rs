@@ -2,7 +2,7 @@ use rumqttc::{MqttOptions, Client, Event, Incoming};
 use std::{collections::HashMap, fs, sync::Arc, sync::Mutex, thread, time::{Duration, Instant}};
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::visit::EdgeRef;
-use std::env;
+
 use log::{info, error};
 use chrono::Local;
 use palette::LinSrgb;
