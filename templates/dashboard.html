@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .mind-map {
+            width: 100%;
+            height: calc(100vh - 150px);
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: auto;
+        }
+        .mind-map img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .status {
+            margin-top: 10px;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+        <div class="mind-map">
+            <img id="mindmap" src="/output/mqtt_mind_map_latest.svg" alt="MQTT Mind Map">
+        </div>
+        <div class="status">
+            Auto-refreshing every {{ refresh_interval }} seconds...
+        </div>
+    </div>
+
+    <script>
+        function refreshMindMap() {
+            const img = document.getElementById('mindmap');
+            img.src = '/output/mqtt_mind_map_latest.svg?' + new Date().getTime();
+        }
+
+        // Refresh the mind map periodically
+        setInterval(refreshMindMap, {{ refresh_interval }} * 1000);
+    </script>
+</body>
+</html> 

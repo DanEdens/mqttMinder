@@ -28,3 +28,11 @@ palette = "0.7"
 
 # Image processing
 image = "0.24"
+
+# Web server
+axum = "0.7"
+tokio = { version = "1.0", features = ["full"] }
+tower-http = { version = "0.5", features = ["fs", "trace"] }
+
+# HTML templates
+askama = "0.12"
