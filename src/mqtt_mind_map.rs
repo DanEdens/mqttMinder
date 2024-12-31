@@ -74,8 +74,8 @@ impl MQTTMindMap {
 
     fn update_mind_map(output_dir: &str, topic_values: &HashMap<String, String>) -> Result<(), std::io::Error> {
         let mut graph = Graph::<String, ()>::new();
-
         let mut nodes = HashMap::new();
+
         for (topic, value) in topic_values.iter() {
             let parts: Vec<&str> = topic.split('/').collect();
             let mut parent_index: Option<NodeIndex> = None;
@@ -94,13 +94,14 @@ impl MQTTMindMap {
             }
         }
 
-        let dot = Dot::with_config(&graph, &[Config::EdgeNoLabel]);
-        let output_path = format!("{}/dynamic_mqtt_mind_map.dot", output_dir);
+        let dot = Dot::with_config(&graph, &[Config::EdgeNoLabel, Config::NodeColor, Config::NodeShape]);
+        let output_path = format!("{}/dynamic_mqtt_mind_map.svg", output_dir);
         fs::write(&output_path, format!("{:?}", dot))?;
         info!("Mind map updated at {}", output_path);
 
         Ok(())
     }
+
 
     fn start(&self) {
         match self.connect() {
