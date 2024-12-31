@@ -4,6 +4,17 @@ use petgraph::graph::{Graph, NodeIndex};
 use petgraph::dot::{Dot, Config};
 use std::env;
 use log::{info, warn, error};
+use chrono::Local;
+use palette::{Srgb, Gradient};
+use std::process::Command;
+
+#[derive(Clone)]
+struct NodeData {
+    label: String,
+    level: usize,
+    last_update: Instant,
+    value: String,
+}
 
 struct MQTTMindMap {
     host: String,
@@ -73,8 +84,16 @@ impl MQTTMindMap {
     }
 
     fn update_mind_map(output_dir: &str, topic_values: &HashMap<String, String>) -> Result<(), std::io::Error> {
-        let mut graph = Graph::<String, ()>::new();
+        let mut graph = Graph::<NodeData, String>::new();
         let mut nodes = HashMap::new();
+        let now = Instant::now();
+
+        // Create a color gradient for different levels
+        let gradient = Gradient::new(vec![
+            Srgb::new(0.2, 0.7, 1.0),  // Light blue
+            Srgb::new(0.1, 0.5, 0.9),  // Medium blue
+            Srgb::new(0.0, 0.3, 0.8),  // Dark blue
+        ]);
 
         for (topic, value) in topic_values.iter() {
             let parts: Vec<&str> = topic.split('/').collect();
@@ -82,26 +101,106 @@ impl MQTTMindMap {
 
             for (i, &part) in parts.iter().enumerate() {
                 let current_topic = parts[..=i].join("/");
+                let node_data = NodeData {
+                    label: part.to_string(),
+                    level: i,
+                    last_update: now,
+                    value: if i == parts.len() - 1 {
+                        value.clone()
+                    } else {
+                        String::new()
+                    },
+                };
+
                 let node_index = *nodes.entry(current_topic.clone()).or_insert_with(|| {
-                    graph.add_node(format!("{}: {}", part, topic_values.get(&current_topic).unwrap_or(&"".to_string())))
+                    graph.add_node(node_data)
                 });
 
                 if let Some(parent) = parent_index {
-                    graph.add_edge(parent, node_index, ());
+                    let edge_label = format!("level_{}", i);
+                    graph.add_edge(parent, node_index, edge_label);
                 }
 
                 parent_index = Some(node_index);
             }
         }
 
-        let dot = Dot::with_config(&graph, &[Config::EdgeNoLabel, Config::NodeColor, Config::NodeShape]);
-        let output_path = format!("{}/dynamic_mqtt_mind_map.svg", output_dir);
-        fs::write(&output_path, format!("{:?}", dot))?;
-        info!("Mind map updated at {}", output_path);
+        // Generate timestamp for file names
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S");
 
+        // Create DOT file with enhanced styling
+        let mut dot_content = String::from("digraph {\n");
+        dot_content.push_str("    graph [rankdir=LR, splines=ortho];\n");
+        dot_content.push_str("    node [style=filled, fontname=Arial];\n");
+
+        // Add nodes with styling
+        for node_idx in graph.node_indices() {
+            let node = &graph[node_idx];
+            let color = gradient.get(node.level as f32 / 5.0); // Normalize level to 0-1 range
+            let color_str = format!("#{:02x}{:02x}{:02x}",
+                (color.red * 255.0) as u8,
+                (color.green * 255.0) as u8,
+                (color.blue * 255.0) as u8
+            );
+
+            let label = if node.value.is_empty() {
+                node.label.clone()
+            } else {
+                format!("{}\n{}", node.label, node.value)
+            };
+
+            dot_content.push_str(&format!(
+                "    n{} [label=\"{}\", fillcolor=\"{}\", shape=box];\n",
+                node_idx.index(), label, color_str
+            ));
+        }
+
+        // Add edges with styling
+        for edge in graph.edge_references() {
+            dot_content.push_str(&format!(
+                "    n{} -> n{} [color=\"#666666\"];\n",
+                edge.source().index(),
+                edge.target().index()
+            ));
+        }
+
+        dot_content.push_str("}\n");
+
+        // Write DOT file
+        let dot_path = format!("{}/mqtt_mind_map_{}.dot", output_dir, timestamp);
+        fs::write(&dot_path, &dot_content)?;
+
+        // Generate SVG using dot
+        let svg_path = format!("{}/mqtt_mind_map_{}.svg", output_dir, timestamp);
+        let png_path = format!("{}/mqtt_mind_map_{}.png", output_dir, timestamp);
+
+        // Generate SVG
+        Command::new("dot")
+            .args(&["-Tsvg", &dot_path, "-o", &svg_path])
+            .output()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+        // Generate PNG
+        Command::new("dot")
+            .args(&["-Tpng", &dot_path, "-o", &png_path])
+            .output()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+        // Create symlinks to latest versions
+        let latest_svg = format!("{}/mqtt_mind_map_latest.svg", output_dir);
+        let latest_png = format!("{}/mqtt_mind_map_latest.png", output_dir);
+
+        // Remove existing symlinks if they exist
+        let _ = fs::remove_file(&latest_svg);
+        let _ = fs::remove_file(&latest_png);
+
+        // Create new symlinks
+        std::os::unix::fs::symlink(&svg_path, &latest_svg)?;
+        std::os::unix::fs::symlink(&png_path, &latest_png)?;
+
+        info!("Mind map updated at {}", svg_path);
         Ok(())
     }
-
 
     fn start(&self) {
         match self.connect() {
