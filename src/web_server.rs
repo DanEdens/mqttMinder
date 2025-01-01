@@ -1,6 +1,7 @@
 use axum::{
     routing::{get, get_service},
     Router,
+    response::Html,
 };
 use std::net::SocketAddr;
 use tower_http::services::ServeDir;
@@ -24,16 +25,20 @@ pub async fn run_server(output_dir: String, port: u16) {
     println!("Dashboard available at http://localhost:{}", port);
 
     // Start the server
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    axum::serve(
+        tokio::net::TcpListener::bind(&addr)
+            .await
+            .unwrap(),
+        app
+    )
+    .await
+    .unwrap();
 }
 
-async fn dashboard_handler() -> impl axum::response::IntoResponse {
+async fn dashboard_handler() -> Html<String> {
     let template = DashboardTemplate {
         title: "MQTT Mind Map Dashboard".to_string(),
         refresh_interval: 5,
     };
-    askama::Response::from(template)
+    Html(template.render().unwrap())
 } 
