@@ -3,3 +3,6 @@
 /target
 Cargo.lock
 .DS_Store
+*.dot
+*.svg
+*.png
